@@ -48,6 +48,7 @@ services:
       - path: .env
         required: false
     environment:
+      NODE_ENV: production
       DATABASE_URL: postgres://briefbot:briefbot@postgres:5432/briefbot
       OPENCODE_BASE_URL: http://opencode:4096
       AUDIO_STORAGE_DIR: /var/lib/briefbot/audio
