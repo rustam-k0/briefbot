@@ -98,7 +98,9 @@ CREATE TABLE "brief_field_history" (
 );
 CREATE INDEX "field_history_brief_idx" ON "brief_field_history"("brief_id","field_id","created_at");
 ALTER TABLE "brief_snapshots" ADD COLUMN "template_snapshot" jsonb;
+ALTER TABLE "brief_snapshots" DISABLE TRIGGER "brief_snapshots_immutable";
 UPDATE "brief_snapshots" s SET "template_snapshot"=b.template_snapshot FROM briefs b WHERE b.id=s.brief_id;
+ALTER TABLE "brief_snapshots" ENABLE TRIGGER "brief_snapshots_immutable";
 ALTER TABLE "brief_snapshots" ALTER COLUMN "template_snapshot" SET NOT NULL;
 DROP TABLE "opencode_sessions";
 -- Keep legacy processed_updates for a safe deduplication grace period; new code no longer writes it.
