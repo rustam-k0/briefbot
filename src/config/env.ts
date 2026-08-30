@@ -9,7 +9,7 @@ export const envSchema=z.object({
   EXTRACTION_MODELS:modelList.default(['opencode-go/qwen3.8-flash','opencode-go/qwen3.7-plus']),OPENCODE_TIMEOUT_MS:z.coerce.number().int().positive().default(60000),
   STT_BASE_URL:z.string().url(),STT_API_KEY:z.string().min(1),STT_MODEL:z.string().min(1).default('Systran/faster-whisper-small'),STT_TIMEOUT_MS:z.coerce.number().int().positive().default(90000),
   AUDIO_STORAGE_DIR:z.string().min(1).default('./data/audio'),AUDIO_RETENTION_DAYS:z.coerce.number().int().positive().default(30),
-  MAX_VOICE_DURATION_SECONDS:z.coerce.number().int().positive().max(1200).default(300),MAX_TEXT_LENGTH:z.coerce.number().int().positive().max(50000).default(12000),MAX_VOICE_BYTES:z.coerce.number().int().positive().max(10000000).default(7500000),LOG_LEVEL:z.enum(['fatal','error','warn','info','debug','trace','silent']).default('info'),
+  MAX_VOICE_DURATION_SECONDS:z.coerce.number().int().positive().max(1200).default(300),MAX_TEXT_LENGTH:z.coerce.number().int().positive().max(50000).default(12000),MAX_VOICE_BYTES:z.coerce.number().int().positive().max(25000000).default(20000000),LOG_LEVEL:z.enum(['fatal','error','warn','info','debug','trace','silent']).default('info'),
 }).superRefine((env,ctx)=>{
   if(env.TELEGRAM_MODE==='webhook'&&!env.TELEGRAM_WEBHOOK_SECRET)ctx.addIssue({code:'custom',path:['TELEGRAM_WEBHOOK_SECRET'],message:'required in webhook mode'});
   if(env.TELEGRAM_MODE==='webhook'&&!env.TELEGRAM_WEBHOOK_URL)ctx.addIssue({code:'custom',path:['TELEGRAM_WEBHOOK_URL'],message:'required in webhook mode'});
