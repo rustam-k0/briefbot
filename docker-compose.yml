@@ -42,6 +42,13 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
+  audio-init:
+    image: node:22-bookworm-slim
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/audio && chown -R 1000:1000 /data"]
+    volumes:
+      - audio_data:/data
+    restart: "no"
   app:
     build: .
     env_file:
@@ -59,6 +66,8 @@ services:
         condition: service_started
       stt:
         condition: service_started
+      audio-init:
+        condition: service_completed_successfully
     volumes:
       - audio_data:/var/lib/briefbot
     ports:
