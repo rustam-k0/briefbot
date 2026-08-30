@@ -55,7 +55,7 @@ export class PostgresBriefRepository implements BriefRepository {
       let [session]=await tx.select().from(briefSessions).where(and(eq(briefSessions.briefId,briefRow.id),isNull(briefSessions.endedAt))).orderBy(desc(briefSessions.startedAt)).limit(1);
       if(session&&Date.now()-session.lastActivityAt.getTime()>SESSION_IDLE_MS){await tx.update(briefSessions).set({endedAt:new Date()}).where(eq(briefSessions.id,session.id));session=undefined;}
       if(!session){[session]=await tx.insert(briefSessions).values({briefId:briefRow.id}).returning();}if(!session)throw new Error('Session missing');
-      const [row]=await tx.insert(messages).values({updateId:BigInt(input.updateId),telegramMessageId:input.telegramMessageId,chatId:chat.id,userId:user.id,briefId:briefRow.id,sessionId:session.id,source:input.source,rawText:input.rawText,telegramFileId:input.telegramFileId}).onConflictDoNothing().returning();
+      const [row]=await tx.insert(messages).values({updateId:BigInt(input.updateId),telegramMessageId:input.telegramMessageId,chatId:chat.id,userId:user.id,briefId:briefRow.id,sessionId:session.id,role:'user',source:input.source,rawText:input.rawText,telegramFileId:input.telegramFileId}).onConflictDoNothing().returning();
       if(!row){const [same]=await tx.select().from(messages).where(eq(messages.updateId,BigInt(input.updateId)));if(!same)throw new Error('Message conflict');return{message:mapMessage(same,input.chatId),brief:mapBrief(briefRow,input.chatId),duplicate:true};}
       await tx.update(briefSessions).set({lastActivityAt:new Date()}).where(eq(briefSessions.id,session.id)); return{message:mapMessage(row,input.chatId),brief:mapBrief(briefRow,input.chatId,session.modelSessionId??undefined),duplicate:false};
     });
