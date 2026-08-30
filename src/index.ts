@@ -4,7 +4,7 @@ import { loadConfig } from './config/env.js';
 import { createDatabase } from './infrastructure/db/client.js';
 import { PostgresBriefRepository } from './infrastructure/db/repository.js';
 import { OpenCodeLLMClient } from './infrastructure/opencode/client.js';
-import { QwenTranscriptionClient } from './infrastructure/stt/qwen-stt.js';
+import { OpenAICompatibleTranscriptionClient } from './infrastructure/stt/openai-compatible-stt.js';
 import { InterviewService } from './application/interview-service.js';
 import { createBot } from './bot/bot.js';
 import { createHttpServer } from './http/server.js';
@@ -16,7 +16,7 @@ const logger = pino({ level: config.LOG_LEVEL, redact: ['token', 'password', 'ap
 const { db, pool } = createDatabase(config.DATABASE_URL);
 const repository = new PostgresBriefRepository(db);
 const llm = new OpenCodeLLMClient({ baseUrl: config.OPENCODE_BASE_URL, username: config.OPENCODE_SERVER_USERNAME, password: config.OPENCODE_SERVER_PASSWORD, models: config.EXTRACTION_MODELS, timeoutMs: config.OPENCODE_TIMEOUT_MS });
-const stt = new QwenTranscriptionClient(config.STT_BASE_URL, config.STT_API_KEY, config.STT_MODELS, config.STT_TIMEOUT_MS);
+const stt = new OpenAICompatibleTranscriptionClient(config.STT_BASE_URL, config.STT_API_KEY, config.STT_MODEL, config.STT_TIMEOUT_MS);
 const service = new InterviewService(repository, llm, event => logger.info(event, 'Pipeline stage'));
 const bot = createBot(config, service, repository, stt);
 const app = createHttpServer(config, bot, pool);
@@ -25,7 +25,7 @@ await app.listen({ host: '0.0.0.0', port: config.PORT });
 if (config.TELEGRAM_MODE === 'polling') {
   void bot.start({ drop_pending_updates: false, onStart: () => logger.info('Telegram long polling started') });
 } else {
-  const publicBaseUrl = config.TELEGRAM_WEBHOOK_URL ?? `https://${config.RENDER_EXTERNAL_HOSTNAME}`;
+  const publicBaseUrl = config.TELEGRAM_WEBHOOK_URL!;
   await bot.api.setWebhook(`${publicBaseUrl.replace(/\/$/, '')}/telegram/webhook`, {
     secret_token: config.TELEGRAM_WEBHOOK_SECRET!,
     allowed_updates: ['message', 'callback_query'],

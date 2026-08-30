@@ -13,7 +13,7 @@ The repository contained an uncommitted MVP, an empty local PostgreSQL database,
 | Duplicate update cannot resume | `processed_updates` was marked before model call | Boolean idempotency without stage machine | Retry was suppressed after partial failure | One message row per update with stages, attempts and recovery | P0 |
 | Cross-message race | An in-memory queue was keyed only by chat | No cross-instance ordering; active brief read happened before lock | Lost update/optimistic conflicts | Per-context queue plus PostgreSQL advisory lock and row lock | P0 |
 | Ambiguous brief context | Unique “one active brief per chat” and implicit latest object | No explicit selected brief | Messages can affect the wrong document | `chats.active_brief_id`, ownership checks, My briefs selector, visible title | P0 |
-| Invalid model policy | `.env.example`/Render used `whisper-1`; Render named `qwen3.8-flash` through an unverified route | No origin/ID allowlist | Violates provider requirement and may fail at runtime | Alibaba-only provider config and startup allowlists | P0 |
+| Invalid model policy | The prototype accepted arbitrary provider/model strings | No provider/ID allowlist | Violates the deployment requirement and may fail at runtime | OpenCode Go-only provider config and Qwen startup allowlist | P0 |
 | Silent long work | No immediate status or chat action | Handler waited for network calls | Perceived hang and webhook retries | Immediate status, stage edits, async webhook acknowledgement | P0 |
 | No language parity | UI strings lived in Russian handlers | No localization boundary | English unusable | RU/EN catalog, parity test, saved locale | P1 |
 | Fixed design schema | Hard-coded field paths and progress groups | No versioned template | Cannot support other briefs safely | Versioned JSON template, snapshots, copy/edit commands | P1 |
@@ -47,24 +47,20 @@ Ownership is checked by joining the requested brief to the Telegram chat. Callba
 
 ## Model routing
 
-Only Alibaba/Qwen models are configured. Model IDs and capabilities were checked against Alibaba Cloud's [text model table](https://www.alibabacloud.com/help/en/model-studio/text-generation-model), [structured output documentation](https://www.alibabacloud.com/help/en/model-studio/qwen-structured-output), and [Qwen ASR API](https://www.alibabacloud.com/help/en/model-studio/qwen-asr-api-reference).
+All external model calls use Qwen through the existing OpenCode Go account. Startup validation rejects every provider except `opencode-go` and rejects model IDs outside the approved Qwen list. The live VPS inventory was checked with `opencode models opencode-go` before deployment.
 
 | Task | Primary | Fallback | Reason |
 |---|---|---|---|
 | Language classification | deterministic Unicode/application code | none | No model call needed |
-| Speech recognition | `qwen3-asr-flash` | `qwen-audio-3.0-asr-flash` | Official audio-capable Alibaba ASR IDs; OGG is sent as a base64 data URL |
+| Speech recognition | local `Systran/faster-whisper-small` | retry/circuit breaker | OpenCode Go exposes no ASR model; audio never leaves the VPS |
 | Transcript normalization | ASR inverse text normalization | original transcript | No second LLM call |
-| Fact extraction + question proposal | `qwen3.8-flash` | `qwen3.7-plus` | 1M context and strict structured output; Flash minimizes normal-path cost/latency |
+| Fact extraction + question proposal | `opencode-go/qwen3.8-flash` | `opencode-go/qwen3.7-plus` | Both IDs are present in the live OpenCode Go inventory; Flash minimizes normal-path latency |
 | Field mapping/validation | application JSON Schema | none | Deterministic and testable |
 | Conflict detection/merge | application code | none | Model cannot overwrite persisted state |
 | Summary/final formatting | application code | none | Avoids cost and invented facts |
 | Translation | disabled | none | Original facts are preserved; UI is localized separately |
 
-Alibaba documents a 1M context and structured output for both text models. Current global default rate limits shown by Alibaba are 30,000 RPM / 5,000,000 TPM for `qwen3.8-flash` and `qwen3.7-plus`; actual workspace quotas must be checked in the console ([rate limits](https://www.alibabacloud.com/help/en/model-studio/rate-limit)). `qwen3.7-plus` list pricing in Singapore begins at $0.40/M input and $1.60/M output tokens for inputs up to 256K; pricing is read at deployment time because it changes ([official model page](https://www.alibabacloud.com/help/en/model-studio/qwen3-7-plus)). ASR list price is $0.000035 per audio second in Singapore ([official pricing](https://www.alibabacloud.com/help/en/model-studio/model-pricing)).
-
-No live model benchmark was run because no valid Alibaba API credential was available to the review. Claiming accuracy, latency, or cost would be false. `npm run benchmark` is a reproducible synthetic RU/EN fixture runner for an authorized environment. The deployment gate is schema-valid rate ≥99%, field precision ≥98%, and p95 extraction latency ≤8 s on at least 100 representative, de-identified messages; ASR must be measured separately on consented audio.
-
-For privacy, use a Model Studio region matching residency requirements. Alibaba states region determines static data location, transient inference is encrypted, and an EU-scoped Frankfurt deployment is available ([regions](https://www.alibabacloud.com/help/en/model-studio/regions/)). Alibaba also states submitted data is not used for model training and is encrypted with AES-256 ([privacy FAQ](https://www.alibabacloud.com/help/en/model-studio/faq-about-alibaba-cloud-model-studio)). Contractual retention still requires owner/legal review.
+`npm run benchmark` is the reproducible RU/EN fixture runner for the authorized OpenCode Go environment. The deployment gate is schema-valid rate ≥99%, field precision ≥98%, and p95 extraction latency ≤8 s on at least 100 representative, de-identified messages. Local ASR is measured separately on consented audio. OpenCode Go pricing, quotas, and retention terms must be checked against the account contract rather than inferred from upstream Qwen pricing.
 
 ## UX map
 
@@ -87,12 +83,12 @@ For privacy, use a Model Studio region matching residency requirements. Alibaba 
 - The database migration created all nine production tables and the six-value field status enum.
 - Dependency audit reports zero known vulnerabilities.
 
-Real provider and Telegram end-to-end checks remain environment gates because the workspace contains no valid Telegram token, Alibaba key, production audio, or consented traffic. Required final smoke: RU text, EN text, 90-second OGG/Opus, forced extraction failure after successful ASR, retry without a second ASR call, two briefs, language switch, HTML special characters, long export, restart recovery, primary/fallback outage.
+Provider and Telegram end-to-end checks run on the VPS because local tests do not use production credentials or consented traffic. Required final smoke: RU text, EN text, 90-second OGG/Opus, forced extraction failure after successful ASR, retry without a second ASR call, two briefs, language switch, HTML special characters, long export, restart recovery, primary/fallback outage.
 
 ## Remaining risks
 
 1. The in-process `/metrics` histogram resets at restart; production should scrape it and aggregate externally.
-2. Audio is stored on the configured filesystem. Multi-instance production needs an encrypted shared object store and lifecycle policy; a local Render filesystem without a persistent disk is not sufficient.
+2. Audio is stored in the VPS Docker volume with lifecycle cleanup. A future multi-host deployment would need an encrypted shared object store and lifecycle policy.
 3. Recovery automatically retries saved text/transcripts three times. A voice that failed before download needs the user's Retry button so Telegram file download can be reattempted.
 4. Custom template commands expose field IDs; a non-technical visual template editor remains a product enhancement.
 5. The migration was verified with a synthetic legacy brief and preserves its fields, raw message, selection, and completed state. A production backup and restore rehearsal are still mandatory before applying any irreversible enum/column migration.

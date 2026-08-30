@@ -1,19 +1,5 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "alibaba": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Alibaba Cloud Model Studio",
-      "options": {
-        "baseURL": "{env:DASHSCOPE_COMPATIBLE_BASE_URL}",
-        "apiKey": "{env:DASHSCOPE_API_KEY}"
-      },
-      "models": {
-        "qwen3.8-flash": { "name": "Qwen3.8 Flash" },
-        "qwen3.7-plus": { "name": "Qwen3.7 Plus" }
-      }
-    }
-  },
   "agent": {
     "brief-interviewer": {
       "description": "Converts untrusted client messages into validated design brief JSON",
