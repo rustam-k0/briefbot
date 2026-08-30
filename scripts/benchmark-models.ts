@@ -1,0 +1,8 @@
+import 'dotenv/config';
+import { readFile } from 'node:fs/promises';
+import { OpenCodeLLMClient } from '../src/infrastructure/opencode/client.js';
+import { builtInDesignTemplate } from '../src/domain/brief.js';
+import { loadConfig } from '../src/config/env.js';
+const config=loadConfig();const fixtures=JSON.parse(await readFile(new URL('../benchmarks/brief-extraction.json',import.meta.url),'utf8')) as Array<{language:string;text:string;expected:string[]}>;
+for(const configured of config.EXTRACTION_MODELS){const client=new OpenCodeLLMClient({baseUrl:config.OPENCODE_BASE_URL,username:config.OPENCODE_SERVER_USERNAME,password:config.OPENCODE_SERVER_PASSWORD,models:[configured],timeoutMs:config.OPENCODE_TIMEOUT_MS});let correct=0,total=0,valid=0;const latencies:number[]=[];for(let i=0;i<fixtures.length;i++){const fixture=fixtures[i]!;const started=Date.now();try{const output=await client.analyze({template:builtInDesignTemplate,brief:{},message:{id:`fixture-${i}`,role:'user',text:fixture.text},history:[]});valid++;latencies.push(Date.now()-started);const actual=new Set(output.result.facts.map(f=>f.fieldId));correct+=fixture.expected.filter(x=>actual.has(x)).length;total+=fixture.expected.length;}catch{total+=fixture.expected.length;}}console.log(JSON.stringify({model:configured,fixtures:fixtures.length,schemaValidRate:valid/fixtures.length,fieldRecall:total?correct/total:0,p50:percentile(latencies,.5),p95:percentile(latencies,.95)}));}
+function percentile(values:number[],q:number){if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.floor((sorted.length-1)*q)]!;}

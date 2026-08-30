@@ -1,0 +1,5 @@
+[
+  {"language":"ru","text":"Мы строим частные дома для семей в Берлине. Бюджет сайта 8 000 евро, запуск к 15 ноября.","expected":["business.product","audience.primarySegments","constraints.budget","constraints.launchDate"]},
+  {"language":"en","text":"The product is an accounting platform for small agencies. We need a demo request form and a €12k budget.","expected":["business.product","audience.primarySegments","functionality.forms","constraints.budget"]},
+  {"language":"mixed","text":"Нужен landing page for a B2B analytics product. Audience — procurement teams; deadline is six weeks.","expected":["scope.siteType","business.product","audience.primarySegments","constraints.launchDate"]}
+]

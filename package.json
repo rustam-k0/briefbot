@@ -1,0 +1,46 @@
+{
+  "name": "briefbot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22 <26" },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/infrastructure/db/migrate.ts",
+    "demo": "tsx src/demo.ts",
+    "webhook:set": "tsx scripts/set-webhook.ts",
+    "benchmark": "tsx scripts/benchmark-models.ts"
+  },
+  "dependencies": {
+    "@grammyjs/auto-retry": "2.0.2",
+    "@opencode-ai/sdk": "1.18.25",
+    "drizzle-orm": "0.45.2",
+    "dotenv": "17.4.2",
+    "fastify": "5.12.1",
+    "grammy": "1.46.0",
+    "pg": "8.16.3",
+    "pino": "9.9.5",
+    "zod": "4.5.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.35.0",
+    "@types/node": "22.18.0",
+    "@types/pg": "8.15.5",
+    "drizzle-kit": "0.31.4",
+    "eslint": "9.35.0",
+    "tsx": "4.20.5",
+    "typescript": "5.9.2",
+    "typescript-eslint": "8.42.0",
+    "vitest": "3.2.7"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": { "esbuild": "0.25.9" }
+  }
+}

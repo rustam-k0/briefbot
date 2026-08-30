@@ -1,0 +1,13 @@
+import { afterEach,describe,expect,it,vi } from 'vitest';
+import { mkdtemp,rm,writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { QwenTranscriptionClient } from '../src/infrastructure/stt/qwen-stt.js';
+import { CircuitBreaker,Semaphore } from '../src/infrastructure/resilience.js';
+afterEach(()=>vi.unstubAllGlobals());
+describe('Qwen ASR contract and resilience',()=>{
+  it('sends Telegram OGG as official input_audio data URL',async()=>{const dir=await mkdtemp(join(tmpdir(),'briefbot-test-'));const file=join(dir,'voice.ogg');await writeFile(file,Buffer.from('OggSfake'));let body:any;vi.stubGlobal('fetch',vi.fn(async(_url,_options:any)=>{body=JSON.parse(_options.body);return new Response(JSON.stringify({choices:[{message:{content:'Привет'}}]}),{status:200});}));try{const result=await new QwenTranscriptionClient('https://example.com/v1','secret',['qwen3-asr-flash']).transcribe(file);expect(result.text).toBe('Привет');expect(body.messages[0].content[0].type).toBe('input_audio');expect(body.messages[0].content[0].input_audio.data).toMatch(/^data:audio\/ogg;base64,/);expect(body.asr_options.enable_itn).toBe(true);}finally{await rm(dir,{recursive:true,force:true});}});
+  it('falls back only to the configured Chinese ASR model',async()=>{const dir=await mkdtemp(join(tmpdir(),'briefbot-test-'));const file=join(dir,'voice.ogg');await writeFile(file,'OggS');const seen:string[]=[];vi.stubGlobal('fetch',vi.fn(async(_url,options:any)=>{const model=JSON.parse(options.body).model;seen.push(model);return model==='qwen3-asr-flash'?new Response('{}',{status:400}):new Response(JSON.stringify({choices:[{message:{content:'ok'}}]}),{status:200});}));try{const result=await new QwenTranscriptionClient('https://example.com/v1','secret',['qwen3-asr-flash','qwen-audio-3.0-asr-flash']).transcribe(file);expect(seen).toEqual(['qwen3-asr-flash','qwen-audio-3.0-asr-flash']);expect(result.model?.fallbackReason).toBeTruthy();}finally{await rm(dir,{recursive:true,force:true});}});
+  it('opens a circuit after the configured failure threshold',()=>{const breaker=new CircuitBreaker(2,10000);expect(breaker.available()).toBe(true);breaker.failure();breaker.failure();expect(breaker.available()).toBe(false);breaker.success();expect(breaker.available()).toBe(true);});
+  it('limits concurrent provider work',async()=>{const semaphore=new Semaphore(2);let active=0,max=0;await Promise.all(Array.from({length:6},()=>semaphore.run(async()=>{active++;max=Math.max(max,active);await new Promise(r=>setTimeout(r,5));active--;})));expect(max).toBe(2);});
+});

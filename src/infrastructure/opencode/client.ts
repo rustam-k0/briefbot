@@ -1,0 +1,21 @@
+import { createOpencodeClient } from '@opencode-ai/sdk/v2';
+import type { LLMClient, ModelCallMetadata } from '../../application/ports.js';
+import { interviewJsonSchema, interviewResultSchema, type InterviewResult } from '../../domain/interview.js';
+import { BRIEF_INTERVIEWER_SYSTEM_PROMPT,buildInterviewPrompt } from '../../prompts/brief-interviewer.js';
+import { withRetry } from '../retry.js';
+import { metrics } from '../observability.js';
+import { CircuitBreaker,Semaphore } from '../resilience.js';
+interface Options{baseUrl:string;username:string;password:string;models:string[];timeoutMs:number;}
+export class OpenCodeLLMClient implements LLMClient{
+  private readonly client:ReturnType<typeof createOpencodeClient>;
+  private readonly breakers=new Map<string,CircuitBreaker>();private readonly limiter=new Semaphore(8);
+  constructor(private readonly options:Options){const auth=Buffer.from(`${options.username}:${options.password}`).toString('base64');this.client=createOpencodeClient({baseUrl:options.baseUrl,headers:{Authorization:`Basic ${auth}`}});}
+  async analyze(input:Parameters<LLMClient['analyze']>[0]):Promise<{result:InterviewResult;sessionId:string;model?:ModelCallMetadata}>{let sessionId=input.sessionId;if(!sessionId||!(await this.sessionExists(sessionId)))sessionId=await this.createSession(this.options.models[0]!);const prompt=buildInterviewPrompt({template:input.template,brief:input.brief,message:input.message,history:input.history});let last:unknown;
+    for(let i=0;i<this.options.models.length;i++){const model=this.options.models[i]!;const breaker=this.breakers.get(model)??new CircuitBreaker();this.breakers.set(model,breaker);if(!breaker.available()){last=new Error('CIRCUIT_OPEN');continue;}const started=Date.now();try{const result=await this.limiter.run(()=>this.prompt(sessionId!,prompt,model,interviewJsonSchema(input.template)));breaker.success();const latencyMs=Date.now()-started;metrics.observe('extraction',latencyMs,true);metrics.model('fact_extraction',model.split('/')[0]!,model.split('/').slice(1).join('/'));return{result,sessionId,model:{task:'fact_extraction',provider:model.split('/')[0]!,model:model.split('/').slice(1).join('/'),latencyMs,attempts:1,...(i?{fallbackReason:String(last??'primary unavailable').slice(0,160)}:{})}};}catch(error){breaker.failure();metrics.observe('extraction',Date.now()-started,false);last=error;if(!isRecoverable(error))throw error;}}
+    throw last;
+  }
+  private async createSession(model:string):Promise<string>{const [providerID,...parts]=model.split('/');const response=await withRetry(()=>this.client.session.create({title:'Brief extraction',agent:'brief-interviewer',model:{providerID:providerID!,id:parts.join('/')}},{throwOnError:true,signal:AbortSignal.timeout(this.options.timeoutMs)}),{attempts:2});const data=unwrap(response);if(!data?.id)throw new Error('MODEL_SESSION_CREATE_FAILED');return data.id;}
+  private async sessionExists(id:string):Promise<boolean>{try{await this.client.session.get({sessionID:id},{throwOnError:true,signal:AbortSignal.timeout(10000)});return true;}catch(error){if(/404|not found/i.test(String(error)))return false;throw error;}}
+  private async prompt(sessionId:string,text:string,model:string,schema:ReturnType<typeof interviewJsonSchema>):Promise<InterviewResult>{const [providerID,...parts]=model.split('/');const response=await withRetry(()=>this.client.session.prompt({sessionID:sessionId,agent:'brief-interviewer',system:BRIEF_INTERVIEWER_SYSTEM_PROMPT,model:{providerID:providerID!,modelID:parts.join('/')},parts:[{type:'text',text}],format:{type:'json_schema',schema,retryCount:1}},{throwOnError:true,signal:AbortSignal.timeout(this.options.timeoutMs)}),{attempts:2,retryIf:isRecoverable});const data=unwrap(response);if(data?.info?.error)throw new Error(`MODEL_${data.info.error.name??'ERROR'}`);const parsed=interviewResultSchema.safeParse(data?.info?.structured);if(!parsed.success)throw new Error(`MODEL_SCHEMA_INVALID: ${parsed.error.message}`);return parsed.data;}
+}
+function unwrap(r:any):any{return r?.data??r;}function isRecoverable(error:unknown):boolean{return /timeout|abort|429|5\d\d|temporar|rate|MODEL_/i.test(String(error));}
